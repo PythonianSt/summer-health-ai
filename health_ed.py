@@ -41,9 +41,21 @@ if mode == "tv":
     base_url = st.secrets["APP_URL"]
     link = f"{base_url}?mode=learn"
 
-    qr = qrcode.make(link)
+    import qrcode
+    from PIL import Image
 
-    st.image(qr, width=350)
+    qr = qrcode.QRCode(
+        version=1,
+        box_size=10,
+        border=4
+    )
+
+    qr.add_data(link)
+    qr.make(fit=True)
+
+    img = qr.make_image(fill_color="black", back_color="white")
+
+    st.image(img, width=350)
 
     st.markdown("---")
 
