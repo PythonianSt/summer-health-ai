@@ -42,7 +42,10 @@ if mode == "tv":
     link = f"{base_url}?mode=learn"
 
     import qrcode
-    from PIL import Image
+    import io
+
+    base_url = st.secrets["APP_URL"]
+    link = f"{base_url}?mode=learn"
 
     qr = qrcode.QRCode(
         version=1,
@@ -55,7 +58,11 @@ if mode == "tv":
 
     img = qr.make_image(fill_color="black", back_color="white")
 
-    st.image(img, width=350)
+    # convert to bytes
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+
+    st.image(buf.getvalue(), width=350)
 
     st.markdown("---")
 
@@ -146,3 +153,4 @@ else:
         ]
 
         st.write(random.choice(tips))
+
