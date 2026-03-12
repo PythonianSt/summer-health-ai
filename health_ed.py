@@ -31,15 +31,124 @@ topics=[
 
 ]
 
+# =========================
+# QUIZ DATABASE
+# =========================
+
+quiz_db={
+
+"Heat Stroke":{
+
+"question":"อาการใดเป็นสัญญาณอันตรายของ Heat Stroke",
+
+"options":[
+
+"เหงื่อออกมาก",
+
+"ตัวร้อน >40°C และสับสน",
+
+"ปวดเมื่อยกล้ามเนื้อ",
+
+"ง่วงนอน"
+
+],
+
+"answer":"ตัวร้อน >40°C และสับสน",
+
+"score":10,
+
+"ref":"WHO Heat and Health Guidelines"
+
+},
+
+"Dehydration":{
+
+"question":"วิธีป้องกันภาวะขาดน้ำที่ดีที่สุดคืออะไร",
+
+"options":[
+
+"ดื่มน้ำเฉพาะเวลาหิว",
+
+"ดื่มน้ำสม่ำเสมอ",
+
+"ดื่มกาแฟ",
+
+"ดื่มน้ำอัดลม"
+
+],
+
+"answer":"ดื่มน้ำสม่ำเสมอ",
+
+"score":8,
+
+"ref":"CDC Hydration Guidance"
+
+},
+
+"Sunburn":{
+
+"question":"ค่า SPF ที่แนะนำสำหรับการป้องกันแดดคือเท่าใด",
+
+"options":[
+
+"SPF 10",
+
+"SPF 15",
+
+"SPF 30 ขึ้นไป",
+
+"ไม่จำเป็น"
+
+],
+
+"answer":"SPF 30 ขึ้นไป",
+
+"score":6,
+
+"ref":"American Academy of Dermatology"
+
+},
+
+"Mosquito":{
+
+"question":"โรคใดมียุงเป็นพาหะ",
+
+"options":[
+
+"ไข้เลือดออก",
+
+"ไข้หวัด",
+
+"วัณโรค",
+
+"COVID"
+
+],
+
+"answer":"ไข้เลือดออก",
+
+"score":5,
+
+"ref":"WHO Dengue Control"
+
+}
+
+}
+
+# =========================
+
 def load_json(file):
 
     if os.path.exists(file):
 
         try:
+
             with open(file,"r",encoding="utf-8") as f:
+
                 return json.load(f)
 
         except:
+
             return {}
 
     return {}
@@ -76,6 +185,7 @@ if mode=="tv":
             video=available[int(time.time()/30)%len(available)]
 
             with open(video,"rb") as f:
+
                 video_bytes=f.read()
 
             video_base64=base64.b64encode(video_bytes).decode()
@@ -143,8 +253,6 @@ else:
     skin=st.selectbox("🧴 ปัญหาผิว",["ไม่มี","สิว","ผื่น","เชื้อรา"])
 
     outdoor=st.selectbox("🏃 กิจกรรมกลางแจ้ง",["บ่อย","บางครั้ง","น้อย"])
-
-    # สุ่มหัวข้อเฉพาะผู้ใช้
 
     if "topic" not in st.session_state:
 
@@ -214,7 +322,43 @@ else:
 
             st.write(advice)
 
-        st.balloons()
+    # =========================
+    # QUIZ SECTION
+    # =========================
+
+    st.markdown("---")
+    st.subheader("🧠 Health Quiz")
+
+    quiz_topic=st.selectbox("เลือกหัวข้อ Quiz",list(quiz_db.keys()))
+
+    q=quiz_db[quiz_topic]
+
+    answer=st.radio(q["question"],q["options"])
+
+    if st.button("ส่งคำตอบ"):
+
+        if answer==q["answer"]:
+
+            st.success("✅ ถูกต้อง!")
+
+            scores[nickname]+=q["score"]
+
+            st.write(f"+{q['score']} คะแนน")
+
+        else:
+
+            st.error("❌ ตอบไม่ถูก")
+
+            st.info(f"เฉลย: {q['answer']}")
+
+        st.write("📚 Reference:",q["ref"])
+
+        with open(SCORE_FILE,"w",encoding="utf-8") as f:
+
+            json.dump(scores,f)
+
+        st.write("คะแนนรวม:",scores[nickname])
+
 
 
 
