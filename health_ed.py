@@ -4,51 +4,70 @@ import qrcode
 import random
 import io
 import os
+import json
 from openai import OpenAI
 
-st.set_page_config(page_title="Summer Health AI Learning", layout="wide")
+st.set_page_config(page_title="AI สุขภาพหน้าร้อน", layout="wide")
 
-# ---------- OpenAI ----------
+# ---------------- OpenAI ----------------
 client = None
 if "OPENAI_API_KEY" in st.secrets:
     client = OpenAI(api_key=st.secrets["OPENAI_API_KEY"])
 
-# ---------- Health Topics ----------
+# ---------------- Score Database ----------------
+SCORE_FILE = "scores.json"
+
+if os.path.exists(SCORE_FILE):
+    with open(SCORE_FILE,"r") as f:
+        scores = json.load(f)
+else:
+    scores = {}
+
+# ---------------- Health Topics ----------------
 topics = [
-    "heat rash",
-    "sunburn",
-    "dehydration",
-    "fungal skin infection",
-    "acne in hot weather",
-    "heat exhaustion",
-    "mosquito bite allergy"
+    "ผดร้อน",
+    "ผิวไหม้แดด",
+    "การขาดน้ำ",
+    "เชื้อราผิวหนัง",
+    "สิวในหน้าร้อน",
+    "ภาวะลมแดด",
+    "แพ้ยุง"
 ]
 
-# ---------- Mode ----------
-mode = st.query_params.get("mode", "tv")
+# ---------------- Mode ----------------
+mode = st.query_params.get("mode","tv")
 
-# =====================================================
+# =================================================
 # SMART TV MODE
-# =====================================================
+# =================================================
 if mode == "tv":
 
-    st.title("🌞 Summer Health AI Learning")
+    st.title("🌞 สนุกกับหน้าร้อนนี้เมื่อสุขภาพของท่านพร้อม")
 
-    st.subheader("Scan QR Code for Personalized Health Learning")
+    st.markdown("### 📱 สแกน QR Code เพื่อเรียนรู้สุขภาพหน้าร้อนแบบเฉพาะบุคคล")
 
     # -------- Random Video --------
-    videos = ["enjoy.mp4", "enjoy2.mp4"]
+    videos = ["enjoy.mp4","enjoy2.mp4"]
     video_choice = random.choice(videos)
 
     if os.path.exists(video_choice):
-        video_file = open(video_choice, "rb")
-        st.video(video_file.read())
+
+        video_bytes = open(video_choice,"rb").read()
+
+        video_html = f"""
+        <video autoplay loop muted width="900">
+        <source src="data:video/mp4;base64,{video_bytes.hex()}" type="video/mp4">
+        </video>
+        """
+
+        st.video(video_bytes)
+
     else:
-        st.warning("Place enjoy.mp4 and enjoy2.mp4 in the same folder.")
+        st.warning("กรุณาวางไฟล์ enjoy.mp4 และ enjoy2.mp4 ในโฟลเดอร์เดียวกัน")
 
     st.divider()
 
-    # -------- QR Code --------
+    # -------- QR CODE --------
     if "APP_URL" in st.secrets:
         base_url = st.secrets["APP_URL"]
     else:
@@ -56,115 +75,129 @@ if mode == "tv":
 
     link = f"{base_url}?mode=learn"
 
-    qr = qrcode.QRCode(version=1, box_size=10, border=4)
-
+    qr = qrcode.QRCode(version=1,box_size=10,border=4)
     qr.add_data(link)
     qr.make(fit=True)
 
-    img = qr.make_image(fill_color="black", back_color="white")
+    img = qr.make_image(fill_color="black",back_color="white")
 
     buf = io.BytesIO()
-    img.save(buf, format="PNG")
+    img.save(buf,format="PNG")
 
-    st.image(buf.getvalue(), width=350)
+    st.image(buf.getvalue(),width=320)
 
-    st.markdown("### Possible Health Topics")
+    st.markdown("### 🧠 หัวข้อสุขภาพที่ AI อาจสุ่มให้คุณ")
 
     st.write("""
-    • Heat rash  
-    • Sunburn  
-    • Dehydration  
-    • Fungal infection  
-    • Acne in hot weather  
-    • Heat exhaustion  
-    • Mosquito bite allergy  
+    🥵 ผดร้อน  
+    🌞 ผิวไหม้แดด  
+    💧 การขาดน้ำ  
+    🍄 เชื้อราผิวหนัง  
+    😓 สิวหน้าร้อน  
+    ☀️ ภาวะลมแดด  
+    🦟 แพ้ยุง
     """)
 
-    st.info("Each student will receive a different personalized topic.")
+    st.success("นักศึกษาแต่ละคนจะได้รับหัวข้อที่แตกต่างกัน")
 
-# =====================================================
+# =================================================
 # STUDENT MODE
-# =====================================================
+# =================================================
 else:
 
-    st.title("📱 Personalized Summer Health Education")
+    st.title("📱 AI สุขภาพหน้าร้อนสำหรับนักศึกษา")
 
-    # Unique session
+    st.markdown("### 🌴 สนุกกับหน้าร้อนนี้เมื่อสุขภาพของท่านพร้อม")
+
+    # -------- Session --------
     if "session_id" not in st.session_state:
         st.session_state.session_id = str(uuid.uuid4())
 
-    # Random topic per student
     if "topic" not in st.session_state:
         st.session_state.topic = random.choice(topics)
 
     topic = st.session_state.topic
 
-    st.subheader(f"Your Topic Today: {topic}")
+    st.subheader(f"🎯 หัวข้อของคุณวันนี้: {topic}")
 
-    # ---------- Student Inputs ----------
-    name = st.text_input("Nickname (optional)")
+    # -------- Student Info --------
+    nickname = st.text_input("ชื่อเล่นของคุณ")
 
     sweat = st.selectbox(
-        "Do you sweat easily?",
-        ["มาก", "ปานกลาง", "น้อย"]
+        "💦 คุณเหงื่อออกง่ายหรือไม่",
+        ["มาก","ปานกลาง","น้อย"]
     )
 
     skin = st.selectbox(
-        "Common skin problem",
-        ["ไม่มี", "ผื่นคัน", "สิว", "เชื้อรา"]
+        "🧴 ปัญหาผิวที่พบบ่อย",
+        ["ไม่มี","ผื่นคัน","สิว","เชื้อรา"]
     )
 
     outdoor = st.selectbox(
-        "Outdoor activity level",
-        ["บ่อย", "บางครั้ง", "น้อย"]
+        "🏃 ทำกิจกรรมกลางแจ้ง",
+        ["บ่อย","บางครั้ง","น้อย"]
     )
 
-    # ---------- AI Advice ----------
-    if st.button("Generate AI Health Advice"):
+    # -------- Generate AI Advice --------
+    if st.button("✨ รับคำแนะนำจาก AI"):
+
+        if nickname == "":
+            st.warning("กรุณาใส่ชื่อเล่น")
+            st.stop()
+
+        if nickname not in scores:
+            scores[nickname] = 0
+
+        scores[nickname] += 10
+
+        with open(SCORE_FILE,"w") as f:
+            json.dump(scores,f)
+
+        st.success(f"🏆 คะแนนสะสมของคุณ: {scores[nickname]}")
 
         if client is None:
-            st.warning("OpenAI API key not configured")
+
+            st.warning("ยังไม่ได้ตั้งค่า OpenAI API")
 
         else:
 
             prompt = f"""
-You are a university clinic doctor.
+คุณเป็นแพทย์ประจำคลินิกมหาวิทยาลัย
 
-Student profile:
-Sweat level: {sweat}
-Skin problem: {skin}
-Outdoor activity: {outdoor}
+ข้อมูลนักศึกษา
+เหงื่อ: {sweat}
+ปัญหาผิว: {skin}
+กิจกรรมกลางแจ้ง: {outdoor}
 
-Health topic: {topic}
+หัวข้อสุขภาพ: {topic}
 
-Provide short personalized summer health advice for this student.
-Avoid recommending antibiotics unless necessary.
+ให้คำแนะนำการดูแลสุขภาพหน้าร้อนแบบสั้น
+สำหรับนักศึกษาไทย
+และหลีกเลี่ยงการใช้ยาปฏิชีวนะโดยไม่จำเป็น
 """
 
             response = client.chat.completions.create(
                 model="gpt-4.1-mini",
-                messages=[{"role": "user", "content": prompt}]
+                messages=[{"role":"user","content":prompt}]
             )
 
             advice = response.choices[0].message.content
 
-            st.success("AI Personalized Advice")
+            st.markdown("### 🧠 คำแนะนำสุขภาพจาก AI")
 
             st.write(advice)
 
-            st.divider()
+        st.divider()
 
-            tips = [
-                "Drink 6–8 glasses of water daily",
-                "Shower after exercise",
-                "Wear breathable clothing",
-                "Avoid unnecessary antibiotic use",
-                "Avoid strong sunlight 11:00–15:00",
-                "Use sunscreen when outdoors"
-            ]
+        tips = [
+            "💧 ดื่มน้ำอย่างน้อยวันละ 6-8 แก้ว",
+            "🚿 อาบน้ำหลังออกกำลังกาย",
+            "👕 ใส่เสื้อผ้าระบายอากาศ",
+            "💊 หลีกเลี่ยงการใช้ยาปฏิชีวนะเอง",
+            "🌤 หลีกเลี่ยงแดดช่วง 11-15 น."
+        ]
 
-            st.subheader("Extra Summer Tip")
+        st.info(random.choice(tips))
 
-            st.info(random.choice(tips))
 
 
