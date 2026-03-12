@@ -1,58 +1,53 @@
 import streamlit as st
 import random
-import uuid
 import os
 import json
-import qrcode
 import base64
+import uuid
+import qrcode
 import io
-import time
 from openai import OpenAI
 
-st.set_page_config(page_title="AI Summer Health", layout="wide")
+st.set_page_config(page_title="AI Health Wall", layout="wide")
 
-# ------------------- CONFIG -------------------
+VIDEOS=["enjoy.mp4","enjoy2.mp4"]
 
-VIDEOS = ["enjoy.mp4","enjoy2.mp4"]
-SCORE_FILE = "scores.json"
-USER_FILE = "users.json"
+SCORE_FILE="scores.json"
+USER_FILE="users.json"
+TOPIC_FILE="topics.json"
 
-topics = [
+topics=[
 "ผดร้อน",
 "ผิวไหม้แดด",
-"การขาดน้ำ",
+"ขาดน้ำ",
 "เชื้อราผิวหนัง",
 "สิวหน้าร้อน",
 "ลมแดด",
 "แพ้ยุง"
 ]
 
-# ------------------- DATABASE -------------------
+def load_json(file):
 
-if os.path.exists(SCORE_FILE):
-    with open(SCORE_FILE) as f:
-        scores=json.load(f)
-else:
-    scores={}
+    if os.path.exists(file):
 
-if os.path.exists(USER_FILE):
-    with open(USER_FILE) as f:
-        users=json.load(f)
-else:
-    users={}
+        with open(file) as f:
+            return json.load(f)
 
-# ------------------- OPENAI -------------------
+    return {}
+
+scores=load_json(SCORE_FILE)
+users=load_json(USER_FILE)
+topic_count=load_json(TOPIC_FILE)
 
 client=None
+
 if "OPENAI_API_KEY" in st.secrets:
     client=OpenAI(api_key=st.secrets["OPENAI_API_KEY"])
 
-# ------------------- MODE -------------------
-
-mode = st.query_params.get("mode","tv")
+mode=st.query_params.get("mode","tv")
 
 # =====================================================
-# SMART TV MODE
+# TV MODE
 # =====================================================
 
 if mode=="tv":
@@ -63,37 +58,65 @@ if mode=="tv":
 
     with col1:
 
-        videos=[v for v in VIDEOS if os.path.exists(v)]
+        video_sources=[]
 
-        if videos:
+        for v in VIDEOS:
 
-            video=random.choice(videos)
+            if os.path.exists(v):
 
-            with open(video,"rb") as f:
-                video_bytes=f.read()
+                with open(v,"rb") as f:
 
-            video_base64=base64.b64encode(video_bytes).decode()
+                    encoded=base64.b64encode(f.read()).decode()
 
-            video_html=f"""
-            <video autoplay loop muted playsinline width="900">
-            <source src="data:video/mp4;base64,{video_base64}" type="video/mp4">
-            </video>
+                    video_sources.append(
+                    f"data:video/mp4;base64,{encoded}"
+                    )
+
+        if video_sources:
+
+            video_list=str(video_sources)
+
+            html=f"""
+
+            <video id="player" autoplay muted loop width="900"></video>
+
+            <script>
+
+            const vids={video_list}
+
+            let index=Math.floor(Math.random()*vids.length)
+
+            const player=document.getElementById("player")
+
+            function playVideo(){{
+            player.src=vids[index]
+            player.play()
+            }}
+
+            playVideo()
+
+            setInterval(function(){{
+            index=Math.floor(Math.random()*vids.length)
+            player.src=vids[index]
+            player.play()
+            }},30000)
+
+            </script>
+
             """
 
-            st.markdown(video_html,unsafe_allow_html=True)
-
-        else:
-            st.warning("กรุณาวาง enjoy.mp4 และ enjoy2.mp4")
+            st.markdown(html,unsafe_allow_html=True)
 
     with col2:
 
-        st.subheader("📱 Scan เพื่อเรียนรู้สุขภาพ")
+        st.subheader("📱 Scan เพื่อเรียนรู้")
 
-        base_url="http://localhost:8501"
+        base="http://localhost:8501"
+
         if "APP_URL" in st.secrets:
-            base_url=st.secrets["APP_URL"]
+            base=st.secrets["APP_URL"]
 
-        link=f"{base_url}?mode=student"
+        link=f"{base}?mode=student"
 
         qr=qrcode.QRCode(box_size=8,border=2)
         qr.add_data(link)
@@ -106,36 +129,27 @@ if mode=="tv":
 
         st.image(buf.getvalue(),width=220)
 
-        st.markdown("### 👥 ผู้เข้าร่วม")
-
-        st.metric("Students",len(users))
+        st.metric("👥 ผู้เข้าร่วม",len(users))
 
         st.markdown("### 🏆 Leaderboard")
 
-        if scores:
+        top=sorted(scores.items(),key=lambda x:x[1],reverse=True)[:5]
 
-            sorted_scores=sorted(scores.items(),key=lambda x:x[1],reverse=True)[:5]
+        for name,score in top:
 
-            for name,score in sorted_scores:
-                st.write(f"👤 {name} : {score}")
+            st.write(f"👤 {name} : {score}")
 
     st.divider()
 
-    st.markdown("### 🎯 ตัวอย่างหัวข้อสุขภาพ")
+    st.subheader("📊 ความสนใจด้านสุขภาพ")
 
-    st.write("""
-🥵 ผดร้อน  
-🌞 ผิวไหม้แดด  
-💧 การขาดน้ำ  
-🍄 เชื้อราผิวหนัง  
-😓 สิวหน้าร้อน  
-☀️ ลมแดด  
-🦟 แพ้ยุง
-""")
+    if topic_count:
 
-    # auto change video
-    time.sleep(20)
-    st.rerun()
+        st.bar_chart(topic_count)
+
+    st.subheader("🤖 AI Doctor")
+
+    st.info("ดื่มน้ำมากขึ้นในหน้าร้อนและหลีกเลี่ยงแดดช่วงเที่ยง")
 
 # =====================================================
 # STUDENT MODE
@@ -169,7 +183,7 @@ else:
 
         if nickname=="":
 
-            st.warning("กรุณากรอกชื่อเล่น")
+            st.warning("กรุณาใส่ชื่อเล่น")
             st.stop()
 
         users[nickname]=True
@@ -185,14 +199,21 @@ else:
         with open(SCORE_FILE,"w") as f:
             json.dump(scores,f)
 
+        topic_count[topic]=topic_count.get(topic,0)+1
+
+        with open(TOPIC_FILE,"w") as f:
+            json.dump(topic_count,f)
+
         st.success(f"🏆 คะแนนสะสม {scores[nickname]}")
 
         if client:
 
             prompt=f"""
+
 คุณเป็นแพทย์มหาวิทยาลัย
 
 ข้อมูลนักศึกษา
+
 เหงื่อ {sweat}
 ผิว {skin}
 กิจกรรม {outdoor}
@@ -201,6 +222,7 @@ else:
 
 ให้คำแนะนำสุขภาพหน้าร้อนแบบสั้น
 สำหรับนักศึกษาไทย
+
 """
 
             res=client.chat.completions.create(
@@ -217,7 +239,7 @@ else:
         tips=[
         "💧 ดื่มน้ำวันละ 6-8 แก้ว",
         "🚿 อาบน้ำหลังออกกำลังกาย",
-        "👕 เสื้อผ้าระบายอากาศ",
+        "👕 ใส่เสื้อผ้าระบายอากาศ",
         "🌤 หลีกเลี่ยงแดด 11-15 น.",
         "💊 ไม่ใช้ยาปฏิชีวนะเอง"
         ]
@@ -225,6 +247,7 @@ else:
         st.info(random.choice(tips))
 
         st.balloons()
+
 
 
 
