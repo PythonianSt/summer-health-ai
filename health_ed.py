@@ -1,148 +1,200 @@
 import streamlit as st
 import random
-import qrcode
-from PIL import Image
-import io
-import json
 import os
-from streamlit_autorefresh import st_autorefresh
+import json
+import uuid
+import qrcode
+import io
+import base64
+from openai import OpenAI
 
-st.set_page_config(page_title="Summer Health AI", layout="wide")
+st.set_page_config(page_title="AI Health Wall", layout="wide")
 
-# -----------------------
-# DATABASE FILE
-# -----------------------
+VIDEOS = ["enjoy.mp4","enjoy2.mp4"]
+
+SCORE_FILE="scores.json"
 USER_FILE="users.json"
 
-if os.path.exists(USER_FILE):
-    with open(USER_FILE,"r") as f:
-        data=json.load(f)
-else:
-    data={"scores":{},"users":[]}
-
-scores=data["scores"]
-users=data["users"]
-
-# -----------------------
-# HEALTH TOPICS
-# -----------------------
-
 topics=[
-
-"🌞 การป้องกันผิวไหม้แดด (Sunburn)",
-"🧴 วิธีใช้ครีมกันแดดให้ถูกต้อง",
-"💧 การดื่มน้ำเพื่อป้องกันผิวแห้ง",
-"🧢 การป้องกันฝ้า กระ จากแดด",
-"👕 เสื้อผ้าที่เหมาะกับหน้าร้อน",
-"🌴 การดูแลผิวหลังว่ายน้ำ",
-"🏖 วิธีป้องกันผื่นจากเหงื่อ",
-"🌡 การป้องกัน Heat Rash",
-"🍉 อาหารที่ช่วยบำรุงผิวในหน้าร้อน",
-"🚿 การอาบน้ำดูแลผิวในหน้าร้อน"
-
+"ผดร้อน",
+"ผิวไหม้แดด",
+"ขาดน้ำ",
+"เชื้อราผิวหนัง",
+"สิวหน้าร้อน",
+"ลมแดด",
+"แพ้ยุง"
 ]
 
-# -----------------------
-# QR GENERATOR
-# -----------------------
+def load_json(file):
 
-def make_qr(url):
+    if os.path.exists(file):
+        with open(file,"r",encoding="utf-8") as f:
+            return json.load(f)
 
-    qr=qrcode.make(url)
-    buf=io.BytesIO()
-    qr.save(buf,format="PNG")
-    buf.seek(0)
+    return {}
 
-    return Image.open(buf)
+scores=load_json(SCORE_FILE)
+users=load_json(USER_FILE)
 
+client=None
 
-# -----------------------
-# MODE
-# -----------------------
+if "OPENAI_API_KEY" in st.secrets:
+    client=OpenAI(api_key=st.secrets["OPENAI_API_KEY"])
 
-mode=st.sidebar.selectbox("Mode",["TV","Student"])
+mode=st.query_params.get("mode","tv")
 
-# -----------------------
-# TV SCREEN MODE
-# -----------------------
+# =========================================
+# TV MODE
+# =========================================
 
-if mode=="TV":
-
-    st_autorefresh(interval=10000,key="tv")
+if mode=="tv":
 
     st.title("🌞 สนุกกับหน้าร้อนนี้เมื่อสุขภาพของท่านพร้อม")
 
     col1,col2=st.columns([2,1])
 
-    # RANDOM VIDEO
-    video=random.choice(["enjoy.mp4","enjoy2.mp4"])
-
     with col1:
 
-        st.video(video, autoplay=True)
+        available=[v for v in VIDEOS if os.path.exists(v)]
+
+        if available:
+
+            video=random.choice(available)
+
+            with open(video,"rb") as f:
+                video_bytes=f.read()
+
+            video_base64=base64.b64encode(video_bytes).decode()
+
+            video_html=f"""
+
+            <video autoplay muted loop playsinline width="900">
+
+            <source src="data:video/mp4;base64,{video_base64}" type="video/mp4">
+
+            </video>
+
+            """
+
+            st.markdown(video_html,unsafe_allow_html=True)
+
+        else:
+
+            st.error("ไม่พบไฟล์ enjoy.mp4 หรือ enjoy2.mp4")
 
     with col2:
 
-        st.subheader("📱 Scan QR เพื่อร่วมกิจกรรม")
+        st.subheader("📱 Scan QR เพื่อเรียนรู้สุขภาพ")
 
-        url="https://YOUR_STREAMLIT_APP_URL/?mode=student"
+        base_url="http://localhost:8501"
 
-        qr=make_qr(url)
+        if "APP_URL" in st.secrets:
+            base_url=st.secrets["APP_URL"]
 
-        st.image(qr,width=300)
+        link=f"{base_url}?mode=student"
+
+        qr=qrcode.QRCode(box_size=8,border=2)
+
+        qr.add_data(link)
+
+        qr.make()
+
+        img=qr.make_image()
+
+        buf=io.BytesIO()
+
+        img.save(buf)
+
+        st.image(buf.getvalue(),width=220)
 
         st.metric("👥 ผู้เข้าร่วม",len(users))
 
-        st.subheader("🏆 Leaderboard")
+        st.markdown("### 🏆 Leaderboard")
 
         top=sorted(scores.items(),key=lambda x:x[1],reverse=True)[:5]
 
         for name,score in top:
 
-            st.write("😀",name,"คะแนน",score)
+            st.write(f"👤 {name} : {score}")
 
-# -----------------------
+# =========================================
 # STUDENT MODE
-# -----------------------
+# =========================================
 
-if mode=="Student":
+else:
 
-    st.title("🌴 AI สุขภาพหน้าร้อน")
+    st.title("📱 AI สุขภาพหน้าร้อนสำหรับนักศึกษา")
 
-    nickname=st.text_input("ใส่ชื่อเล่น")
+    if "topic" not in st.session_state:
 
-    if nickname:
+        st.session_state.topic=random.choice(topics)
 
-        if nickname not in users:
-            users.append(nickname)
+    topic=st.session_state.topic
+
+    st.subheader(f"🎯 หัวข้อของคุณ : {topic}")
+
+    nickname=st.text_input("ชื่อเล่น")
+
+    sweat=st.selectbox("💦 เหงื่อออก",["มาก","ปานกลาง","น้อย"])
+
+    skin=st.selectbox("🧴 ปัญหาผิว",["ไม่มี","สิว","ผื่น","เชื้อรา"])
+
+    outdoor=st.selectbox("🏃 กิจกรรมกลางแจ้ง",["บ่อย","บางครั้ง","น้อย"])
+
+    if st.button("รับคำแนะนำจาก AI"):
+
+        if nickname=="":
+
+            st.warning("กรุณาใส่ชื่อเล่น")
+
+            st.stop()
+
+        users[nickname]=True
+
+        with open(USER_FILE,"w",encoding="utf-8") as f:
+            json.dump(users,f)
 
         if nickname not in scores:
             scores[nickname]=0
 
-        st.success("ยินดีต้อนรับ "+nickname)
+        scores[nickname]+=10
 
-        avatar=random.choice(["😎","🌞","🏖","🍉","🌴"])
+        with open(SCORE_FILE,"w",encoding="utf-8") as f:
+            json.dump(scores,f)
 
-        st.header(avatar+" หัวข้อของคุณ")
+        st.success(f"คะแนนสะสม {scores[nickname]}")
 
-        topic=random.choice(topics)
+        if client:
 
-        st.write(topic)
+            prompt=f"""
+คุณเป็นแพทย์มหาวิทยาลัย
 
-        if st.button("ฉันได้เรียนรู้แล้ว"):
+ข้อมูลนักศึกษา
+เหงื่อ {sweat}
+ผิว {skin}
+กิจกรรม {outdoor}
 
-            scores[nickname]+=1
+หัวข้อ {topic}
 
-            st.success("🎉 ได้รับ 1 คะแนน")
+ให้คำแนะนำสุขภาพหน้าร้อนสั้นๆ
+"""
 
-            data={"scores":scores,"users":users}
+            res=client.chat.completions.create(
 
-            with open(USER_FILE,"w") as f:
-                json.dump(data,f)
+                model="gpt-4.1-mini",
 
-            st.balloons()
+                messages=[{"role":"user","content":prompt}]
 
-    st.write("🏆 คะแนนของคุณ:",scores.get(nickname,0))
+            )
+
+            advice=res.choices[0].message.content
+
+            st.markdown("### 🧠 AI แนะนำ")
+
+            st.write(advice)
+
+        st.balloons()
+
 
 
 
