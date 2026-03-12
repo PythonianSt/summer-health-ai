@@ -2,18 +2,21 @@ import streamlit as st
 import random
 import os
 import json
-import uuid
 import qrcode
 import io
 import base64
+import time
+from collections import Counter
 from openai import OpenAI
+from streamlit_autorefresh import st_autorefresh
 
-st.set_page_config(page_title="AI Health Wall", layout="wide")
+st.set_page_config(page_title="AI Campus Health Platform",layout="wide")
 
-VIDEOS = ["enjoy.mp4","enjoy2.mp4"]
+VIDEOS=["enjoy.mp4","enjoy2.mp4"]
 
 SCORE_FILE="scores.json"
 USER_FILE="users.json"
+DATA_FILE="healthdata.json"
 
 topics=[
 "ผดร้อน",
@@ -25,31 +28,47 @@ topics=[
 "แพ้ยุง"
 ]
 
+quiz_questions=[
+
+("การป้องกันผิวไหม้แดดควรใช้ SPF เท่าไร","30"),
+("ควรดื่มน้ำวันละกี่ลิตรในหน้าร้อน","2"),
+("ผดร้อนเกิดจากอะไร","เหงื่อ")
+
+]
+
 def load_json(file):
 
     if os.path.exists(file):
-        with open(file,"r",encoding="utf-8") as f:
-            return json.load(f)
+
+        try:
+            with open(file,"r",encoding="utf-8") as f:
+                return json.load(f)
+        except:
+            return {}
 
     return {}
 
 scores=load_json(SCORE_FILE)
 users=load_json(USER_FILE)
+healthdata=load_json(DATA_FILE)
 
 client=None
 
 if "OPENAI_API_KEY" in st.secrets:
+
     client=OpenAI(api_key=st.secrets["OPENAI_API_KEY"])
 
 mode=st.query_params.get("mode","tv")
 
-# =========================================
+# =================================
 # TV MODE
-# =========================================
+# =================================
 
 if mode=="tv":
 
-    st.title("🌞 สนุกกับหน้าร้อนนี้เมื่อสุขภาพของท่านพร้อม")
+    st_autorefresh(interval=10000,key="tv")
+
+    st.title("🌞 AI Campus Health Wall")
 
     col1,col2=st.columns([2,1])
 
@@ -59,7 +78,7 @@ if mode=="tv":
 
         if available:
 
-            video=random.choice(available)
+            video=available[int(time.time()/30)%len(available)]
 
             with open(video,"rb") as f:
                 video_bytes=f.read()
@@ -78,17 +97,14 @@ if mode=="tv":
 
             st.markdown(video_html,unsafe_allow_html=True)
 
-        else:
-
-            st.error("ไม่พบไฟล์ enjoy.mp4 หรือ enjoy2.mp4")
-
     with col2:
 
-        st.subheader("📱 Scan QR เพื่อเรียนรู้สุขภาพ")
+        st.subheader("📱 Join Health Challenge")
 
         base_url="http://localhost:8501"
 
         if "APP_URL" in st.secrets:
+
             base_url=st.secrets["APP_URL"]
 
         link=f"{base_url}?mode=student"
@@ -107,76 +123,103 @@ if mode=="tv":
 
         st.image(buf.getvalue(),width=220)
 
-        st.metric("👥 ผู้เข้าร่วม",len(users))
+        st.metric("👥 Students",len(users))
 
-        st.markdown("### 🏆 Leaderboard")
+        st.markdown("### 🏆 Top Students")
 
         top=sorted(scores.items(),key=lambda x:x[1],reverse=True)[:5]
 
         for name,score in top:
 
-            st.write(f"👤 {name} : {score}")
+            st.write(name,score)
 
-# =========================================
+        if healthdata:
+
+            st.markdown("### 📊 Skin Problems")
+
+            skins=[v["skin"] for v in healthdata.values()]
+
+            c=Counter(skins)
+
+            for k,v in c.items():
+
+                st.write(k,v)
+
+# =================================
 # STUDENT MODE
-# =========================================
+# =================================
 
-else:
+elif mode=="student":
 
-    st.title("📱 AI สุขภาพหน้าร้อนสำหรับนักศึกษา")
-
-    if "topic" not in st.session_state:
-
-        st.session_state.topic=random.choice(topics)
-
-    topic=st.session_state.topic
-
-    st.subheader(f"🎯 หัวข้อของคุณ : {topic}")
+    st.title("📱 AI Health Coach")
 
     nickname=st.text_input("ชื่อเล่น")
 
-    sweat=st.selectbox("💦 เหงื่อออก",["มาก","ปานกลาง","น้อย"])
+    sweat=st.selectbox("เหงื่อ",["มาก","ปานกลาง","น้อย"])
 
-    skin=st.selectbox("🧴 ปัญหาผิว",["ไม่มี","สิว","ผื่น","เชื้อรา"])
+    skin=st.selectbox("ผิว",["ไม่มี","สิว","ผื่น","เชื้อรา"])
 
-    outdoor=st.selectbox("🏃 กิจกรรมกลางแจ้ง",["บ่อย","บางครั้ง","น้อย"])
+    outdoor=st.selectbox("กิจกรรมกลางแจ้ง",["บ่อย","บางครั้ง","น้อย"])
 
-    if st.button("รับคำแนะนำจาก AI"):
+    topic=random.choice(topics)
+
+    st.subheader("🎯 Topic")
+
+    st.write(topic)
+
+    if st.button("AI Advice"):
 
         if nickname=="":
 
-            st.warning("กรุณาใส่ชื่อเล่น")
+            st.warning("กรุณาใส่ชื่อ")
 
             st.stop()
 
         users[nickname]=True
 
         with open(USER_FILE,"w",encoding="utf-8") as f:
+
             json.dump(users,f)
 
         if nickname not in scores:
+
             scores[nickname]=0
 
         scores[nickname]+=10
 
         with open(SCORE_FILE,"w",encoding="utf-8") as f:
+
             json.dump(scores,f)
 
-        st.success(f"คะแนนสะสม {scores[nickname]}")
+        healthdata[nickname]={
+
+            "sweat":sweat,
+            "skin":skin,
+            "outdoor":outdoor
+
+        }
+
+        with open(DATA_FILE,"w",encoding="utf-8") as f:
+
+            json.dump(healthdata,f)
+
+        st.success(f"คะแนน {scores[nickname]}")
 
         if client:
 
             prompt=f"""
+
 คุณเป็นแพทย์มหาวิทยาลัย
 
-ข้อมูลนักศึกษา
+นักศึกษา
 เหงื่อ {sweat}
 ผิว {skin}
 กิจกรรม {outdoor}
 
 หัวข้อ {topic}
 
-ให้คำแนะนำสุขภาพหน้าร้อนสั้นๆ
+ให้คำแนะนำสุขภาพหน้าร้อน 4 บรรทัด
+
 """
 
             res=client.chat.completions.create(
@@ -187,13 +230,52 @@ else:
 
             )
 
-            advice=res.choices[0].message.content
+            st.write(res.choices[0].message.content)
 
-            st.markdown("### 🧠 AI แนะนำ")
+    st.markdown("## 🎮 Health Quiz")
 
-            st.write(advice)
+    q=random.choice(quiz_questions)
 
-        st.balloons()
+    ans=st.text_input(q[0])
+
+    if st.button("Submit Quiz"):
+
+        if ans==q[1]:
+
+            st.success("+5 points")
+
+            scores[nickname]+=5
+
+            with open(SCORE_FILE,"w",encoding="utf-8") as f:
+
+                json.dump(scores,f)
+
+        else:
+
+            st.error("Incorrect")
+
+# =================================
+# ADMIN MODE
+# =================================
+
+else:
+
+    st.title("📊 Campus Health Dashboard")
+
+    st.metric("Students",len(users))
+
+    st.metric("Total Data",len(healthdata))
+
+    if healthdata:
+
+        skins=[v["skin"] for v in healthdata.values()]
+
+        st.write("Skin problems",Counter(skins))
+
+        sweats=[v["sweat"] for v in healthdata.values()]
+
+        st.write("Sweat pattern",Counter(sweats))
+
 
 
 
