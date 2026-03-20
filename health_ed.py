@@ -89,7 +89,7 @@ if 'user_questions' not in st.session_state:
 if mode=="tv":
     st_autorefresh(interval=10000,key="tv")
 
-    st.title("🌞 AI Campus Health Wall")
+    st.title("🌞 สนุกกับหน้าร้อนนี้เมื่อสุขภาพของท่านพร้อม")
 
     col1,col2=st.columns([2,1])
 
