@@ -9,6 +9,7 @@ import time
 from collections import Counter
 from openai import OpenAI
 from streamlit_autorefresh import st_autorefresh
+import pandas as pd
 
 st.set_page_config(page_title="AI Campus Health Platform", layout="wide")
 
@@ -48,6 +49,13 @@ def load_json(file):
             return {}
     return {}
 
+def save_all_data():
+    """Save all data to files"""
+    json.dump(scores, open(SCORE_FILE, "w", encoding="utf-8"))
+    json.dump(users, open(USER_FILE, "w", encoding="utf-8"))
+    json.dump(healthdata, open(DATA_FILE, "w", encoding="utf-8"))
+
+# Load data
 scores = load_json(SCORE_FILE)
 users = load_json(USER_FILE)
 healthdata = load_json(DATA_FILE)
@@ -80,6 +88,11 @@ def spinner_game(nickname):
         border-radius:12px;background:white;
         display:flex;align-items:center;justify-content:center;
         box-shadow:0 0 10px rgba(0,0,0,0.2);
+        cursor:pointer;
+    }
+    .box:hover{
+        transform:scale(1.05);
+        transition:transform 0.2s;
     }
     </style>
     """, unsafe_allow_html=True)
@@ -117,113 +130,221 @@ def spinner_game(nickname):
         healthdata[nickname]["reaction_time_ms"] = rt
         healthdata[nickname]["timestamp"] = time.time()
 
-        json.dump(scores, open(SCORE_FILE, "w", encoding="utf-8"))
-        json.dump(healthdata, open(DATA_FILE, "w", encoding="utf-8"))
-
+        save_all_data()
         st.session_state.game_done = True
 
     return st.session_state.get("game_done", False)
 
 # =========================
-# TV MODE
+# TV MODE (with auto-refresh and live dashboard)
 # =========================
 if mode == "tv":
-    st_autorefresh(interval=10000, key="tv")
-    st.title("🌞 สนุกกับหน้าร้อนนี้เมื่อสุขภาพของท่านพร้อม")
-
-    col1, col2 = st.columns([2, 1])
-
-    with col1:
-        available = [v for v in VIDEOS if os.path.exists(v)]
-        if available:
-            video = available[int(time.time() / 30) % len(available)]
-            st.video(video)
-
-    with col2:
-        st.subheader("📱 Join")
-        base_url = "http://localhost:8501"
-        if "APP_URL" in st.secrets:
-            base_url = st.secrets["APP_URL"]
-        link = f"{base_url}?mode=student"
-
-        qr = qrcode.make(link)
-        buf = io.BytesIO()
-        qr.save(buf)
-        st.image(buf.getvalue())
-
-        st.metric("👥 Students", len(users))
+    # Auto-refresh every 5 seconds for real-time updates
+    st_autorefresh(interval=5000, key="tv")
+    
+    st.title("🌞 AI Campus Health Platform - Live Dashboard")
+    
+    # Create tabs for different views
+    tab1, tab2, tab3 = st.tabs(["📺 Live Feed", "📊 Scoreboard", "👥 User Stats"])
+    
+    with tab1:
+        col1, col2 = st.columns([2, 1])
+        
+        with col1:
+            st.subheader("🎬 Health Education Video")
+            available = [v for v in VIDEOS if os.path.exists(v)]
+            if available:
+                # Auto-rotate videos every 30 seconds
+                video_idx = int(time.time() / 30) % len(available)
+                video = available[video_idx]
+                st.video(video)
+                st.caption(f"Currently playing: {video}")
+            else:
+                st.warning("No videos found. Please add enjoy.mp4 or enjoy2.mp4")
+        
+        with col2:
+            st.subheader("📱 Join Session")
+            base_url = "http://localhost:8501"
+            if "APP_URL" in st.secrets:
+                base_url = st.secrets["APP_URL"]
+            link = f"{base_url}?mode=student"
+            
+            qr = qrcode.make(link)
+            buf = io.BytesIO()
+            qr.save(buf)
+            st.image(buf.getvalue())
+            
+            st.metric("👥 Active Students", len(users))
+            st.caption(f"Session ID: {int(time.time())}")
+    
+    with tab2:
+        st.subheader("🏆 Live Scoreboard")
+        
+        if scores:
+            # Create DataFrame for scores
+            score_df = pd.DataFrame(list(scores.items()), columns=['User', 'Score'])
+            score_df = score_df.sort_values('Score', ascending=False).reset_index(drop=True)
+            
+            # Display with ranking
+            st.dataframe(
+                score_df,
+                use_container_width=True,
+                column_config={
+                    "User": st.column_config.TextColumn("Username", width="medium"),
+                    "Score": st.column_config.NumberColumn("Score", format="%d")
+                }
+            )
+            
+            # Top 3 podium
+            st.markdown("### 🥇 Top Performers")
+            cols = st.columns(3)
+            for i, (_, row) in enumerate(score_df.head(3).iterrows()):
+                with cols[i]:
+                    medals = ["🥇", "🥈", "🥉"]
+                    st.markdown(f"""
+                    <div style="text-align:center; padding:20px; border-radius:10px; background:#f0f2f6;">
+                        <h1>{medals[i]}</h1>
+                        <h3>{row['User']}</h3>
+                        <h2>{row['Score']} pts</h2>
+                    </div>
+                    """, unsafe_allow_html=True)
+            
+            # Chart visualization
+            st.markdown("### 📈 Score Distribution")
+            st.bar_chart(score_df.set_index('User')['Score'])
+            
+        else:
+            st.info("No scores yet. Waiting for students to join...")
+    
+    with tab3:
+        st.subheader("👥 User Statistics")
+        
+        if users:
+            col1, col2, col3 = st.columns(3)
+            
+            with col1:
+                st.metric("Total Registered", len(users))
+            
+            with col2:
+                active_users = len([u for u in users if users[u] is True])
+                st.metric("Active Today", active_users)
+            
+            with col3:
+                if scores:
+                    avg_score = sum(scores.values()) / len(scores)
+                    st.metric("Average Score", f"{avg_score:.1f}")
+            
+            # Recent activity
+            st.markdown("### 📋 Registered Users")
+            user_list = pd.DataFrame(list(users.keys()), columns=['Username'])
+            st.dataframe(user_list, use_container_width=True)
+            
+            # Reaction time stats
+            if healthdata:
+                reaction_times = [v.get("reaction_time_ms", 0) for v in healthdata.values() if "reaction_time_ms" in v]
+                if reaction_times:
+                    st.markdown("### ⏱️ Reaction Time Analytics")
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        st.metric("Average RT", f"{int(sum(reaction_times)/len(reaction_times))} ms")
+                    with col2:
+                        st.metric("Fastest RT", f"{min(reaction_times)} ms")
+        else:
+            st.info("No users registered yet")
+    
+    # Auto-refresh status
+    st.sidebar.info("🔄 Dashboard auto-refreshes every 5 seconds")
 
 # =========================
 # STUDENT MODE
 # =========================
 elif mode == "student":
     st.title("📱 AI Health Coach")
-
-    nickname = st.text_input("ชื่อเล่น")
-
-    if nickname:
-        users[nickname] = True
-        json.dump(users, open(USER_FILE, "w", encoding="utf-8"))
-
-    st.markdown("---")
-    st.markdown("## 🎮 Quiz + Game")
     
-    # FIX: Added missing topic pools that were referenced but not defined
+    # Initialize session state for multiplayer
+    if "game_session_active" not in st.session_state:
+        st.session_state.game_session_active = False
+    
+    nickname = st.text_input("ชื่อเล่น / Nickname")
+    
+    if nickname:
+        # Register user
+        if nickname not in users:
+            users[nickname] = True
+            if nickname not in scores:
+                scores[nickname] = 0
+            save_all_data()
+            st.success(f"✅ Welcome {nickname}! Your journey begins now.")
+        
+        # Display current score
+        st.sidebar.markdown(f"### 👤 {nickname}")
+        st.sidebar.metric("🏆 Your Score", scores.get(nickname, 0))
+        
+        # Show ranking in sidebar
+        if scores:
+            sorted_scores = sorted(scores.items(), key=lambda x: x[1], reverse=True)
+            rank = next((i+1 for i, (name, _) in enumerate(sorted_scores) if name == nickname), None)
+            if rank:
+                st.sidebar.metric("📊 Your Rank", f"#{rank} / {len(scores)}")
+                if rank <= 3:
+                    st.sidebar.balloons()
+    
+    st.markdown("---")
+    st.markdown("## 🎮 Health Quiz Challenge")
+    
+    # Topic pools
     general_topics = topics.copy()
     skin_topics = ["การดูแลผิว", "ผดร้อน", "เชื้อราผิวหนัง", "สิวหน้าร้อน"]
     outdoor_topics = ["ลมแดด", "ผิวไหม้แดด", "การป้องกันไข้แดด", "โรคลมร้อน"]
     lifestyle_topics = ["การนอนหลับ", "ความเครียด", "การดื่มน้ำ", "อาหารการกิน"]
 
-    # FIX: Added missing form elements that were indented incorrectly
-    # These were at the wrong indentation level
-    sweat = st.selectbox("เหงื่อ", ["มาก", "ปานกลาง", "น้อย"])
-    skin = st.selectbox("ผิว", ["ไม่มี", "สิว", "ผื่น", "เชื้อรา"])
-    outdoor = st.selectbox("กิจกรรมกลางแจ้ง", ["บ่อย", "บางครั้ง", "น้อย"])
-    sleep = st.selectbox("การนอน", ["พอ", "น้อย", "ดึก"])
-    water = st.selectbox("การดื่มน้ำ", ["เพียงพอ", "น้อย"])
-    stress = st.selectbox("ความเครียด", ["น้อย", "ปานกลาง", "สูง"])
+    # Health assessment form
+    with st.expander("📋 Health Self-Assessment", expanded=False):
+        sweat = st.selectbox("💧 เหงื่อ", ["มาก", "ปานกลาง", "น้อย"])
+        skin = st.selectbox("🧴 ผิว", ["ไม่มี", "สิว", "ผื่น", "เชื้อรา"])
+        outdoor = st.selectbox("☀️ กิจกรรมกลางแจ้ง", ["บ่อย", "บางครั้ง", "น้อย"])
+        sleep = st.selectbox("😴 การนอน", ["พอ", "น้อย", "ดึก"])
+        water = st.selectbox("💦 การดื่มน้ำ", ["เพียงพอ", "น้อย"])
+        stress = st.selectbox("😰 ความเครียด", ["น้อย", "ปานกลาง", "สูง"])
 
-    topic_pool = general_topics.copy()
+        topic_pool = general_topics.copy()
 
-    if skin != "ไม่มี":
-        topic_pool += skin_topics
-    if outdoor == "บ่อย":
-        topic_pool += outdoor_topics
-    if sleep != "พอ" or stress == "สูง":
-        topic_pool += lifestyle_topics
+        if skin != "ไม่มี":
+            topic_pool += skin_topics
+        if outdoor == "บ่อย":
+            topic_pool += outdoor_topics
+        if sleep != "พอ" or stress == "สูง":
+            topic_pool += lifestyle_topics
 
-    topic = random.choice(topic_pool)
+        topic = random.choice(topic_pool)
 
-    st.subheader("🎯 Topic (สุ่ม)")
-    st.write(topic)
-
-    if st.button("AI Advice"):
-        if nickname == "":
-            st.warning("กรุณาใส่ชื่อ")
-            st.stop()
-
-        users[nickname] = True
-        json.dump(users, open(USER_FILE, "w", encoding="utf-8"))
-
-        scores[nickname] = scores.get(nickname, 0) + 10
-        json.dump(scores, open(SCORE_FILE, "w", encoding="utf-8"))
-
-        healthdata[nickname] = {
-            "sweat": sweat,
-            "skin": skin,
-            "outdoor": outdoor,
-            "sleep": sleep,
-            "water": water,
-            "stress": stress,
-            "topic": topic
-        }
-
-        json.dump(healthdata, open(DATA_FILE, "w", encoding="utf-8"))
-
-        st.success(f"คะแนน {scores[nickname]}")
-
-        if client:
-            prompt = f"""
+        st.subheader("🎯 Today's Health Topic")
+        st.info(f"**{topic}**")
+        
+        if st.button("🤖 Get AI Health Advice"):
+            if nickname == "":
+                st.warning("Please enter your nickname first")
+                st.stop()
+            
+            # Award points for seeking advice
+            scores[nickname] = scores.get(nickname, 0) + 10
+            
+            healthdata[nickname] = {
+                "sweat": sweat,
+                "skin": skin,
+                "outdoor": outdoor,
+                "sleep": sleep,
+                "water": water,
+                "stress": stress,
+                "topic": topic,
+                "timestamp": time.time()
+            }
+            
+            save_all_data()
+            st.success(f"✨ +10 points! Total: {scores[nickname]} points")
+            
+            if client:
+                prompt = f"""
 คุณเป็นแพทย์มหาวิทยาลัย
 
 ข้อมูล:
@@ -236,92 +357,202 @@ elif mode == "student":
 
 หัวข้อ {topic}
 
-ให้คำแนะนำ 4 บรรทัด
+ให้คำแนะนำสั้นๆ 4 บรรทัด
 """
+                try:
+                    res = client.chat.completions.create(
+                        model="gpt-4.1-mini",
+                        messages=[{"role": "user", "content": prompt}]
+                    )
+                    st.success("💡 Health Advice:")
+                    st.write(res.choices[0].message.content)
+                except Exception as e:
+                    st.error(f"API Error: {e}")
+            else:
+                st.info("AI advice available with OpenAI API key")
 
-            res = client.chat.completions.create(
-                model="gpt-4.1-mini",
-                messages=[{"role": "user", "content": prompt}]
-            )
-
-            st.write(res.choices[0].message.content)
-
+    # Quiz game section
     if nickname:
         if "qset" not in st.session_state:
             st.session_state.qset = random.sample(quiz_questions, 5)
             st.session_state.qidx = 0
             st.session_state.done = False
+            st.session_state.quiz_score = 0
 
         if not st.session_state.done:
             idx = st.session_state.qidx
-
-            # FIX: Corrected the condition from len(st.session_state.qset)+1 to len(st.session_state.qset)
+            
+            # Show progress
+            st.progress(idx / len(st.session_state.qset), text=f"Question {idx + 1} of {len(st.session_state.qset)}")
+            
             if idx < len(st.session_state.qset):
-
-                # 🎮 GAME LAST
+                # Check if it's game time (after quiz)
                 if idx == len(st.session_state.qset) - 1:
+                    st.markdown("### 🎮 Bonus Game!")
+                    st.info("Complete the reaction game to earn bonus points!")
                     if spinner_game(nickname):
                         st.session_state.qidx += 1
                         st.rerun()
-
                 else:
                     q, a = st.session_state.qset[idx]
-                    st.write(f"Q{idx+1}: {q}")
-
+                    st.markdown(f"### Question {idx+1}")
+                    st.write(f"**{q}**")
+                    
                     choices = [a, "ไม่รู้", "ไม่แน่ใจ", "ข้าม"]
                     random.shuffle(choices)
-
-                    ans = st.radio("เลือก:", choices, key=f"q{idx}")
-
-                    if st.button("ตอบ"):
-                        if ans == a:
-                            st.success("ถูก +5")
-                            scores[nickname] = scores.get(nickname, 0) + 5
-                        else:
-                            st.error(f"ผิด: {a}")
-
-                        json.dump(scores, open(SCORE_FILE, "w", encoding="utf-8"))
-
-                        st.session_state.qidx += 1
-                        st.rerun()
-
+                    
+                    ans = st.radio("เลือกคำตอบ:", choices, key=f"q{idx}", index=None)
+                    
+                    col1, col2 = st.columns([1, 4])
+                    with col1:
+                        if st.button("✅ Submit Answer", type="primary"):
+                            if ans is None:
+                                st.warning("Please select an answer")
+                            else:
+                                if ans == a:
+                                    st.success("🎉 Correct! +5 points")
+                                    scores[nickname] = scores.get(nickname, 0) + 5
+                                    st.session_state.quiz_score += 5
+                                else:
+                                    st.error(f"❌ Wrong! The correct answer is: {a}")
+                                
+                                save_all_data()
+                                st.session_state.qidx += 1
+                                st.rerun()
+                    
+                    with col2:
+                        if st.button("⏭️ Skip Question"):
+                            st.session_state.qidx += 1
+                            st.rerun()
             else:
                 st.session_state.done = True
-
-        else:
+                save_all_data()
+        
+        if st.session_state.done:
             st.balloons()
-            st.success("🎉 เสร็จแล้ว")
-
-            if st.button("เล่นใหม่"):
-                for k in ["qset", "qidx", "done", "game_odd", "game_done", "game_start"]:
+            st.success(f"🎉 Congratulations {nickname}! You completed the challenge!")
+            st.metric("Quiz Score", st.session_state.get("quiz_score", 0))
+            st.metric("Total Score", scores.get(nickname, 0))
+            
+            # Show leaderboard
+            if scores:
+                st.markdown("### 🏆 Current Leaderboard")
+                leaderboard = sorted(scores.items(), key=lambda x: x[1], reverse=True)[:5]
+                for i, (name, score) in enumerate(leaderboard, 1):
+                    medal = "🥇" if i == 1 else "🥈" if i == 2 else "🥉" if i == 3 else "📌"
+                    st.write(f"{medal} #{i}: **{name}** - {score} points")
+            
+            if st.button("🔄 Play Again", type="primary"):
+                for k in ["qset", "qidx", "done", "quiz_score", "game_odd", "game_done", "game_start"]:
                     if k in st.session_state:
                         del st.session_state[k]
                 st.rerun()
-
-    if nickname in scores:
-        st.sidebar.write(f"คะแนน: {scores[nickname]}")
+    
+    # Real-time leaderboard in sidebar
+    st.sidebar.markdown("---")
+    st.sidebar.markdown("### 🏆 Live Leaderboard")
+    if scores:
+        sorted_scores = sorted(scores.items(), key=lambda x: x[1], reverse=True)
+        for i, (name, score) in enumerate(sorted_scores[:5], 1):
+            medal = "🥇" if i == 1 else "🥈" if i == 2 else "🥉" if i == 3 else "•"
+            st.sidebar.write(f"{medal} **{name}**: {score} pts")
+        
+        if len(scores) > 5:
+            st.sidebar.write(f"... and {len(scores)-5} more players")
+    else:
+        st.sidebar.info("No players yet")
 
 # =========================
 # ADMIN MODE
 # =========================
 else:
-    st.title("📊 Dashboard")
+    st.title("📊 Admin Dashboard")
+    
+    # Refresh button
+    if st.button("🔄 Refresh Data"):
+        st.rerun()
+    
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        st.metric("👥 Total Users", len(users))
+    
+    with col2:
+        if scores:
+            total_score = sum(scores.values())
+            st.metric("🏆 Total Points", total_score)
+    
+    with col3:
+        if scores:
+            avg_score = sum(scores.values()) / len(scores) if scores else 0
+            st.metric("📊 Average Score", f"{avg_score:.1f}")
+    
+    # User data table
+    st.markdown("### 📋 User Data")
+    
+    if users:
+        # Create comprehensive dataframe
+        user_data = []
+        for user in users:
+            user_data.append({
+                "Username": user,
+                "Score": scores.get(user, 0),
+                "Registered": "✅" if users[user] else "❌",
+                "Last Activity": time.strftime("%Y-%m-%d %H:%M", time.localtime(healthdata.get(user, {}).get("timestamp", 0))) if user in healthdata else "N/A",
+                "Reaction Time": f"{healthdata.get(user, {}).get('reaction_time_ms', 'N/A')} ms" if user in healthdata and "reaction_time_ms" in healthdata[user] else "N/A"
+            })
+        
+        df = pd.DataFrame(user_data)
+        df = df.sort_values('Score', ascending=False)
+        
+        st.dataframe(df, use_container_width=True, height=400)
+        
+        # Export option
+        csv = df.to_csv(index=False)
+        st.download_button(
+            label="📥 Export Data as CSV",
+            data=csv,
+            file_name=f"health_platform_data_{int(time.time())}.csv",
+            mime="text/csv"
+        )
+        
+        # Score chart
+        st.markdown("### 📈 Score Distribution")
+        score_df = pd.DataFrame([(u, scores.get(u, 0)) for u in users], columns=['User', 'Score'])
+        st.bar_chart(score_df.set_index('User'))
+        
+        # Reaction time analysis
+        if healthdata:
+            st.markdown("### ⏱️ Reaction Time Analysis")
+            reaction_data = []
+            for user, data in healthdata.items():
+                if "reaction_time_ms" in data:
+                    reaction_data.append({
+                        "User": user,
+                        "Reaction Time (ms)": data["reaction_time_ms"],
+                        "Score": scores.get(user, 0)
+                    })
+            
+            if reaction_data:
+                rt_df = pd.DataFrame(reaction_data)
+                st.dataframe(rt_df, use_container_width=True)
+                
+                # Statistics
+                avg_rt = rt_df["Reaction Time (ms)"].mean()
+                st.metric("Average Reaction Time", f"{int(avg_rt)} ms")
+                
+                # Chart
+                st.line_chart(rt_df.set_index('User')["Reaction Time (ms)"])
+    else:
+        st.info("No users registered yet")
 
-    st.metric("Users", len(users))
+# Auto-save on session end
+def on_session_end():
+    save_all_data()
 
-    if healthdata:
-        st.markdown("### ⏱️ Reaction Time")
-        times = [v.get("reaction_time_ms", 0) for v in healthdata.values() if "reaction_time_ms" in v]
-
-        if times:
-            avg = sum(times) / len(times)
-            st.write(f"Average: {int(avg)} ms")
-
-            slow = [t for t in times if t > 2000]
-            fast = [t for t in times if t < 800]
-
-            st.write(f"⚠️ Slow: {len(slow)}")
-            st.write(f"⚡ Fast: {len(fast)}")
+# Register cleanup
+import atexit
+atexit.register(save_all_data)
 
 
 
