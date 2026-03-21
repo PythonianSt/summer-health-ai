@@ -95,32 +95,25 @@ def render_score_dashboard():
             </div>
             """, unsafe_allow_html=True)
 
-    # Full leaderboard table
+    # Full leaderboard table using native Streamlit (no raw HTML leaking)
     if len(sorted_scores) > 0:
         st.markdown("#### 📋 Full Rankings")
-        rows_html = ""
+        medals = ["🥇", "🥈", "🥉"]
+        rows = []
         for i, (name, score) in enumerate(sorted_scores, 1):
-            medal_icon = medals[i - 1] if i <= 3 else f"#{i}"
-            rows_html += f"""
-            <tr>
-                <td style="padding:8px 12px;font-weight:600;">{medal_icon}</td>
-                <td style="padding:8px 12px;">{name}</td>
-                <td style="padding:8px 12px;font-weight:700;text-align:right;">{score} pts</td>
-            </tr>
-            """
-        st.markdown(f"""
-        <table style="width:100%;border-collapse:collapse;background:#f9f9f9;
-                      border-radius:10px;overflow:hidden;font-size:0.95rem;">
-            <thead>
-                <tr style="background:#1a1a2e;color:white;">
-                    <th style="padding:10px 12px;text-align:left;">Rank</th>
-                    <th style="padding:10px 12px;text-align:left;">Player</th>
-                    <th style="padding:10px 12px;text-align:right;">Score</th>
-                </tr>
-            </thead>
-            <tbody>{rows_html}</tbody>
-        </table>
-        """, unsafe_allow_html=True)
+            rank_label = medals[i - 1] if i <= 3 else f"#{i}"
+            rows.append({"Rank": rank_label, "Player": name, "Score": score})
+        df = pd.DataFrame(rows)
+        st.dataframe(
+            df,
+            use_container_width=True,
+            hide_index=True,
+            column_config={
+                "Rank":   st.column_config.TextColumn("Rank",   width="small"),
+                "Player": st.column_config.TextColumn("Player", width="medium"),
+                "Score":  st.column_config.NumberColumn("Score (pts)", format="%d"),
+            }
+        )
 
 
 # =========================
