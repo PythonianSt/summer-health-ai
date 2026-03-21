@@ -192,7 +192,7 @@ def spinner_game(nickname):
 if mode == "tv":
     st_autorefresh(interval=5000, key="tv")
 
-    st.title("🌞 AI Campus Health Platform - Live Dashboard")
+    st.title("🌞 สนุกกับหน้าร้อนนี้เมื่อสุขภาพของท่านพร้อม")
 
     tab1, tab2, tab3 = st.tabs(["📺 Live Feed", "📊 Scoreboard", "👥 User Stats"])
 
