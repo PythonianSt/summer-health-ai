@@ -200,7 +200,7 @@ if mode == "tv":
         col1, col2 = st.columns([2, 1])
 
         with col1:
-            st.subheader("🎬 Health Education Video")
+            st.subheader("🎬 Health Education Video by KU KPS Infirmary")
             available = [v for v in VIDEOS if os.path.exists(v)]
             if available:
                 video_idx = int(time.time() / 30) % len(available)
