@@ -207,19 +207,7 @@ if mode == "tv":
                 video_path = available[video_idx]
 
                 # Read and encode the video for autoplay via HTML5
-                with open(video_path, "rb") as vf:
-                    video_bytes = vf.read()
-                video_b64 = base64.b64encode(video_bytes).decode()
-
-                st.markdown(f"""
-                <video width="100%" autoplay muted loop playsinline
-                       style="border-radius:12px;box-shadow:0 4px 20px rgba(0,0,0,0.15);">
-                    <source src="data:video/mp4;base64,{video_b64}" type="video/mp4">
-                </video>
-                <p style="font-size:0.8rem;color:#888;margin-top:4px;">
-                    ▶️ Auto-playing: {video_path}
-                </p>
-                """, unsafe_allow_html=True)
+                st.video(video_path, autoplay=True, muted=True)
             else:
                 st.warning("No videos found. Please add enjoy.mp4 or enjoy2.mp4")
 
